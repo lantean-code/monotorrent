@@ -39,17 +39,13 @@ namespace MonoTorrent.Dht
         /// <summary>
         /// How many distinct targets to probe.
         /// </summary>
-        public int TargetCount { get; set; }           // how many distinct targets to probe
+        public int TargetCount { get; set; }
 
         // Node selection (which nodes to ask)
         public NodeSelection NodeSelection { get; set; }
 
-        public int PerBucketHeadCount { get; set; } = 1; // nodes per bucket
+        public int PerBucketHeadCount { get; set; } = 1;
 
-        // For ReputationWeighted. Higher is better. If null, fallback to ClosestToTarget.
-        public Func<DhtNodeContact, double, bool>? NodeReputationScore { get; set; }
-
-        // Optional seed nodes (BEP-5 compact 26-byte entries); engine merges with routing table
         /// <summary>
         /// Optional seed nodes (BEP-5 compact 26-byte entries); engine merges with routing table.
         /// </summary>
@@ -59,27 +55,27 @@ namespace MonoTorrent.Dht
         /// <summary>
         /// Honour 'interval' from responses.
         /// </summary>
-        public bool RespectInterval { get; set; }      // honour 'interval' from responses
+        public bool RespectInterval { get; set; }
 
         /// <summary>
         /// Minimum time before re-querying the same node.
         /// </summary>
-        public TimeSpan PerNodeCooldown { get; set; }  // min time before re-querying same node
+        public TimeSpan PerNodeCooldown { get; set; }
 
         /// <summary>
         /// Hard stop for the round.
         /// </summary>
-        public TimeSpan GlobalDeadline { get; set; }   // hard stop for the round
+        public TimeSpan GlobalDeadline { get; set; }
 
         /// <summary>
         /// Raise event with source nodes for each infohash.
         /// </summary>
-        public bool EmitSources { get; set; }      // raise event with source nodes for each infohash
+        public bool EmitSources { get; set; }
 
         /// <summary>
         /// Maximum sources to keep per infohash if EmitSources is true.
         /// </summary>
-        public int MaxSourcesPerHash { get; set; } = 8; // max sources to keep per infohash if EmitSources is true
+        public int MaxSourcesPerHash { get; set; } = 8;
     }
 
     public enum TargetStrategy
@@ -87,12 +83,12 @@ namespace MonoTorrent.Dht
         /// <summary>
         /// Random 160-bit keys (default).
         /// </summary>
-        Random,        // random 160-bit keys
+        Random,
 
         /// <summary>
         /// Generate targets to cover buckets evenly.
         /// </summary>
-        BucketSweep,   // generate targets to cover buckets evenly
+        BucketSweep,
     }
 
     public enum NodeSelection

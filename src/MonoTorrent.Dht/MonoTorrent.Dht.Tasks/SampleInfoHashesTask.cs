@@ -140,10 +140,15 @@ namespace MonoTorrent.Dht.Tasks
 
                 // Harvest samples
                 if (response.Samples != null && FoundSamples.Count < Options.MaxSamples) {
+                    int totalFromThisNode = 0;     // all samples returned in this response
+                    int newKeysFromThisNode = 0;   // how many were *new to this run* (distinct keys)
+
                     foreach (var sample in ParseSamples (response.Samples)) {
+                        totalFromThisNode++;
                         if (!FoundSamples.TryGetValue (sample, out var set)) {
                             set = new HashSet<Node> ();
                             FoundSamples[sample] = set;
+                            newKeysFromThisNode++;
                         }
                         if (Options.EmitSources) {
                             if (Options.MaxSourcesPerHash <= 0 || set.Count < Options.MaxSourcesPerHash) {
@@ -161,6 +166,10 @@ namespace MonoTorrent.Dht.Tasks
 
                         if (FoundSamples.Count >= Options.MaxSamples)
                             break;
+                    }
+
+                    if (totalFromThisNode > 0) {
+                        Engine.Reputation.RecordYield(query.Node, newKeysFromThisNode, totalFromThisNode);
                     }
                 }
 
@@ -324,7 +333,6 @@ namespace MonoTorrent.Dht.Tasks
         private bool BudgetsExceeded ()
             => FoundSamples.Count >= Options.MaxSamples || TotalFanout >= Options.MaxFanout;
 
-        // NEW: centralised error handling/backoff
         private void HandleError (Node node, ErrorMessage err)
         {
             switch (err.ErrorCode) {
@@ -350,6 +358,8 @@ namespace MonoTorrent.Dht.Tasks
                     BackoffUntil[node] = DateTime.UtcNow + ShortBackoff;
                     break;
             }
+
+            Engine.Reputation.RecordError (node, err.ErrorCode);
         }
 
         private static bool IsCloser (Node a, Node b, NodeId target)
@@ -369,9 +379,6 @@ namespace MonoTorrent.Dht.Tasks
         {
             // Resolve selection mode (fallback if no scorer provided)
             var selection = Options.NodeSelection;
-            var scorer = Options.NodeReputationScore;
-            if (selection == NodeSelection.ReputationWeighted && scorer == null)
-                selection = NodeSelection.ClosestToTarget;
 
             // Guard against accidental duplicates (belt-and-braces)
             var yielded = new HashSet<Node> ();
@@ -401,13 +408,12 @@ namespace MonoTorrent.Dht.Tasks
                 }
 
                 case NodeSelection.ReputationWeighted: {
-                    // Bias toward historically high-yield nodes; cap sort work
                     var all = Engine.RoutingTable.Buckets.SelectMany (b => b.Nodes);
                     int take = Math.Max (Options.MaxConcurrency * 4, 32);
 
                     foreach (var n in all
-                        .OrderByDescending (n => scorer! (n.EndPoint, n.Id.AsMemory ()))
-                        .ThenBy (n => target ^ n.Id) // stable tie-breaker by XOR distance
+                        .OrderByDescending (n => Engine.Reputation.GetScore (n))
+                        .ThenBy (n => target ^ n.Id) // stable tie-breaker
                         .Take (take)) {
                         if (yielded.Add (n))
                             yield return n;
