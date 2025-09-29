@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using MonoTorrent.Connections.Dht;
@@ -44,8 +45,11 @@ namespace MonoTorrent.Client
         public ITransferMonitor Monitor { get; }
         public int NodeCount => 0;
         public DhtState State { get; private set; }
+        public DhtCapabilities Capabilities { get; }
+        public bool DispatchEventsOnMainLoop { get; }
 
         public event EventHandler<PeersFoundEventArgs> PeersFound;
+        public event EventHandler<InfoHashesFoundEventArgs> InfoHashesFound;
         public event EventHandler StateChanged;
 
         public void Add (IEnumerable<ReadOnlyMemory<byte>> nodes)
@@ -65,6 +69,10 @@ namespace MonoTorrent.Client
         {
 
         }
+        public void SampleInfohashes (SamplingOptions samplingOptions = null, CancellationToken cancellationToken = default)
+        {
+            
+        }
 
         public void RaisePeersFound (InfoHash infoHash, IList<PeerInfo> peers)
             => PeersFound?.Invoke (this, new PeersFoundEventArgs (infoHash, peers));
@@ -74,6 +82,9 @@ namespace MonoTorrent.Client
             State = newState;
             StateChanged?.Invoke (this, EventArgs.Empty);
         }
+
+        public void RaiseInfoHashesFound (Dictionary<InfoHash, IReadOnlyCollection<DhtNodeContact>> infoHashes)
+            => InfoHashesFound?.Invoke (this, new InfoHashesFoundEventArgs (infoHashes));
 
         public Task<ReadOnlyMemory<byte>> SaveNodesAsync ()
             => Task.FromResult (ReadOnlyMemory<byte>.Empty);

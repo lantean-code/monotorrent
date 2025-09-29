@@ -162,7 +162,14 @@ namespace MonoTorrent.Dht
             try {
                 if (DhtMessageFactory.TryDecodeMessage ((BEncodedDictionary) BEncodedValue.Decode (buffer.Span, false), out DhtMessage? message)) {
                     Monitor.ReceiveMonitor.AddDelta (buffer.Length);
-                    ReceiveQueue.Enqueue (new KeyValuePair<IPEndPoint, DhtMessage> (endpoint, message!));
+                    if (message is QueryMessage) {
+                        Engine.OnInboundQueryObserved (endpoint);
+
+                        if ((Engine.Capabilities & DhtCapabilities.AcceptInboundQueries) == 0)
+                            return;
+                    }
+
+                    ReceiveQueue.Enqueue (new KeyValuePair<IPEndPoint, DhtMessage> (endpoint, message!));                        
                 }
             } catch (MessageException) {
                 // Caused by bad transaction id usually - ignore
@@ -203,6 +210,7 @@ namespace MonoTorrent.Dht
                 ReadOnlyMemory<byte> buffer = details.Message.Encode ();
                 try {
                     Monitor.SendMonitor.AddDelta (buffer.Length);
+                    Engine.MarkSent (details.Destination);
                     await Listener.SendAsync (buffer, details.Destination);
                 } catch {
                     TimeoutMessage (details);

@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using MonoTorrent.Connections.Dht;
@@ -69,10 +70,13 @@ namespace MonoTorrent.Dht
         TimeSpan MinimumAnnounceInterval { get; }
         int NodeCount { get; }
         DhtState State { get; }
+        public DhtCapabilities Capabilities { get; }
+        public bool DispatchEventsOnMainLoop { get; }
 
         void Add (IEnumerable<ReadOnlyMemory<byte>> nodes);
         void Announce (InfoHash infoHash, int port);
         void GetPeers (InfoHash infoHash);
+        void SampleInfohashes (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default);
         Task<ReadOnlyMemory<byte>> SaveNodesAsync ();
         Task SetListenerAsync (IDhtListener listener);
         Task StartAsync ();

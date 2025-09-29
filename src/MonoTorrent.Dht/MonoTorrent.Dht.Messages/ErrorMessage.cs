@@ -40,9 +40,9 @@ namespace MonoTorrent.Dht.Messages
         internal override NodeId Id => NodeId.Minimum;
         BEncodedList ErrorList => (BEncodedList) properties[ErrorListKey];
 
-        ErrorCode ErrorCode => ((ErrorCode) ((BEncodedNumber) ErrorList[0]).Number);
+        internal ErrorCode ErrorCode => ((ErrorCode) ((BEncodedNumber) ErrorList[0]).Number);
 
-        string Message => ((BEncodedString) ErrorList[1]).Text;
+        internal string Message => ((BEncodedString) ErrorList[1]).Text;
 
         public ErrorMessage (BEncodedValue transactionId, ErrorCode error, string message)
             : base (ErrorType)

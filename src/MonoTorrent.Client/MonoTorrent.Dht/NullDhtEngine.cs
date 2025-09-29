@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 using MonoTorrent.Connections.Dht;
@@ -66,6 +67,10 @@ namespace MonoTorrent.Client
 
         public DhtState State => DhtState.NotReady;
 
+        public DhtCapabilities Capabilities { get; }
+
+        public bool DispatchEventsOnMainLoop { get; }
+
         public void Add (IEnumerable<ReadOnlyMemory<byte>> nodes)
         {
 
@@ -82,6 +87,11 @@ namespace MonoTorrent.Client
         }
 
         public void GetPeers (InfoHash infoHash)
+        {
+
+        }
+
+        public void SampleInfohashes (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default)
         {
 
         }
