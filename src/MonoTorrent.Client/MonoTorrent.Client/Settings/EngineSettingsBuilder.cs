@@ -166,6 +166,17 @@ namespace MonoTorrent.Client
         public IPEndPoint? DhtEndPoint { get; set; }
 
         /// <summary>
+        /// The capabilites of the DhtEngine. Use this to contrcol what messages the engine handles.
+        /// </summary>
+        public DhtCapabilities DhtCapabilities { get; set; } = DhtCapabilities.Default;
+
+        /// <summary>
+        /// If set to <see langword="true"/> the DHT Engine will call event handlers on the main loop. This defaults to true.
+        /// </summary>
+        /// <remarks>Set this to <see langword="false"/> if you have long running event handlers to prevent blocking the DHT Engine's loop.</remarks>
+        public bool DispatchDhtEventsOnMainLoop { get; set; } = true;
+
+        /// <summary>
         /// When <see cref="EngineSettings.AutoSaveLoadFastResume"/> is true, this setting is used to control how fast
         /// resume data is maintained, otherwise it has no effect. You can prioritise accuracy (at the risk of requiring full hash checks if an actively downloading
         /// torrent does not cleanly enter the <see cref="TorrentState.Stopped"/> state) by choosing <see cref="FastResumeMode.Accurate"/>.

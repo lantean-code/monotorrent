@@ -148,6 +148,16 @@ namespace MonoTorrent.Client
         public IPEndPoint? DhtEndPoint { get; } = new IPEndPoint (IPAddress.Any, 0);
 
         /// <summary>
+        /// The capabilites of the DhtEngine. Use this to contrcol what message the engine handles.
+        /// </summary>
+        public DhtCapabilities DhtCapabilities { get; } = DhtCapabilities.Default;
+
+        /// <summary>
+        /// Should the DHT Engine call event handlers on the main loop. The default's to true.
+        /// </summary>
+        public bool DispatchDhtEventsOnMainLoop { get; } = true;
+
+        /// <summary>
         /// This is the full path to a sub-directory of <see cref="CacheDirectory"/>. If <see cref="AutoSaveLoadFastResume"/>
         /// is enabled then fast resume data will be written to this when <see cref="TorrentManager.StopAsync"/> or
         /// <see cref="ClientEngine.StopAllAsync"/> is invoked. If fast resume data is available, the data will be loaded

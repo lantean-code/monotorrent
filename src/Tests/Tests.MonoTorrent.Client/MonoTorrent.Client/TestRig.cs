@@ -463,7 +463,7 @@ namespace MonoTorrent.Client
 
             Writer = writer ?? new TestWriter ();
             var factories = Factories.Default
-                .WithDhtCreator (() => new ManualDhtEngine ())
+                .WithDhtCreator ((capabilities, dispatchEventsOnMainLoop) => new ManualDhtEngine ())
                 .WithDhtListenerCreator (port => new NullDhtListener ())
                 .WithLocalPeerDiscoveryCreator (() => new ManualLocalPeerListener ())
                 .WithPeerConnectionListenerCreator (endpoint => new CustomListener ())

@@ -29,6 +29,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -45,6 +46,8 @@ namespace MonoTorrent.Dht.Tasks
 
         // Results / de-dupe
         private readonly Dictionary<NodeId, HashSet<Node>> FoundSamples;
+
+        private readonly HashSet<IPEndPoint> _pingedCandidates = new HashSet<IPEndPoint> ();
 
         private HashSet<Node> QueriedNodes { get; }
 
@@ -123,7 +126,11 @@ namespace MonoTorrent.Dht.Tasks
                 if (query.Response == null)
                     continue;
 
+                Engine.RoutingTable.Add (query.Node);
+
                 var response = (SampleInfoHashesResponse) query.Response;
+
+                MaybeAddNodesToRoutingTable (response.Nodes);
 
                 // Respect BEP-51 'interval' and an optional minimum cooldown
                 if (Options.RespectInterval && response.Interval != null) {
@@ -226,6 +233,26 @@ namespace MonoTorrent.Dht.Tasks
         }
 
         // ——— helpers ———
+
+        private void MaybeAddNodesToRoutingTable (BEncodedString? nodes)
+        {
+            if (nodes == null)
+                return;
+
+            int budget = 16; // cap per-response pings
+            foreach (var n in Node.FromCompactNode (nodes)) {
+                if (budget == 0)
+                    break;
+
+                // skip obvious dups this round
+                if (!_pingedCandidates.Add (n.EndPoint))
+                    continue;
+
+                // fire-and-forget ping; Engine.Add() will do SendQueryAsync(Ping,...)
+                _ = Engine.Add (n);
+                budget--;
+            }
+        }
 
         private QueryMessage NewQuery (NodeId target)
         {

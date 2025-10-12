@@ -50,7 +50,7 @@ namespace MonoTorrent.Client
         public async Task AddPeers_Dht ()
         {
             var dht = new ManualDhtEngine ();
-            var factories = EngineHelpers.Factories.WithDhtCreator (() => dht);
+            var factories = EngineHelpers.Factories.WithDhtCreator ((capabilities, dispatchEventsOnMainLoop) => dht);
             var settings = EngineHelpers.CreateSettings (dhtEndPoint: new IPEndPoint (IPAddress.Any, 1234));
 
             using var engine = new ClientEngine (settings, factories);

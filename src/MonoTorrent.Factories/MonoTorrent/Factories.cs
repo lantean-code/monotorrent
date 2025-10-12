@@ -51,7 +51,7 @@ namespace MonoTorrent
     public partial class Factories
     {
         public delegate IBlockCache BlockCacheCreator (IPieceWriter writer, long capacity, CachePolicy policy, MemoryPool buffer);
-        public delegate IDhtEngine DhtCreator ();
+        public delegate IDhtEngine DhtCreator (DhtCapabilities capabilities = DhtCapabilities.Default, bool dispatchEventsOnMainLoop = true);
         public delegate IDhtListener DhtListenerCreator (IPEndPoint endpoint);
         public delegate HttpClient HttpClientCreator (AddressFamily family);
         public delegate ILocalPeerDiscovery LocalPeerDiscoveryCreator ();
@@ -87,7 +87,7 @@ namespace MonoTorrent
         public Factories ()
         {
             BlockCacheFunc = (writer, capacity, policy, buffer) => new MemoryCache (buffer, capacity, policy, writer);
-            DhtFunc = () => new DhtEngine ();
+            DhtFunc = (dhtCapabilities, dispatchEventsOnMainLoop) => new DhtEngine (dhtCapabilities, dispatchEventsOnMainLoop);
             DhtListenerFunc = endpoint => new DhtListener (endpoint);
 
             HttpClientFunc = HttpRequestFactory.CreateHttpClient;
@@ -126,8 +126,8 @@ namespace MonoTorrent
             return dupe;
         }
 
-        public IDhtEngine CreateDht ()
-            => DhtFunc ();
+        public IDhtEngine CreateDht (DhtCapabilities capabilities = DhtCapabilities.Default, bool dispatchEventsOnMainLoop = true)
+            => DhtFunc (capabilities, dispatchEventsOnMainLoop);
         public Factories WithDhtCreator (DhtCreator creator)
         {
             var dupe = MemberwiseClone ();

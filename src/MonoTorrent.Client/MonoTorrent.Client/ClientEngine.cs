@@ -336,7 +336,7 @@ namespace MonoTorrent.Client
             listenManager.SetListeners (PeerListeners);
 
             DhtListener = (settings.DhtEndPoint == null ? null : Factories.CreateDhtListener (settings.DhtEndPoint)) ?? new NullDhtListener ();
-            DhtEngine = (settings.DhtEndPoint == null ? null : Factories.CreateDht ()) ?? new NullDhtEngine ();
+            DhtEngine = (settings.DhtEndPoint == null ? null : Factories.CreateDht (settings.DhtCapabilities, settings.DispatchDhtEventsOnMainLoop)) ?? new NullDhtEngine ();
             Dht = new DhtEngineWrapper (DhtEngine);
             DhtEngine.SetListenerAsync (DhtListener).GetAwaiter ().GetResult ();
 
@@ -581,14 +581,33 @@ namespace MonoTorrent.Client
         /// Downloads the .torrent metadata for the provided MagnetLink.
         /// </summary>
         /// <param name="magnetLink">The MagnetLink to get the metadata for.</param>
+        /// <param name="knownPeers">A list of initial peers to try and fetch metadata from.</param>
         /// <param name="token">The cancellation token used to to abort the download. This method will
         /// only complete if the metadata successfully downloads, or the token is cancelled.</param>
         /// <returns></returns>
-        public async Task<ReadOnlyMemory<byte>> DownloadMetadataAsync (MagnetLink magnetLink, CancellationToken token)
+        public Task<ReadOnlyMemory<byte>> DownloadMetadataAsync (MagnetLink magnetLink, IEnumerable<PeerInfo> knownPeers, CancellationToken token)
+        {
+            return DownloadMetadata (magnetLink, knownPeers, token);
+        }
+
+        /// <summary>
+        /// Downloads the .torrent metadata for the provided MagnetLink.
+        /// </summary>
+        /// <param name="magnetLink">The MagnetLink to get the metadata for.</param>
+        /// <param name="token">The cancellation token used to to abort the download. This method will
+        /// only complete if the metadata successfully downloads, or the token is cancelled.</param>
+        /// <returns></returns>
+        public Task<ReadOnlyMemory<byte>> DownloadMetadataAsync (MagnetLink magnetLink, CancellationToken token)
+        {
+            return DownloadMetadata (magnetLink, Array.Empty<PeerInfo> (), token);
+        }
+
+        async Task<ReadOnlyMemory<byte>> DownloadMetadata (MagnetLink magnetLink, IEnumerable<PeerInfo> knownPeers, CancellationToken token)
         {
             await MainLoop;
 
             var manager = new TorrentManager (this, magnetLink, "", new TorrentSettings ());
+            manager.AddPeers (knownPeers, prioritise: true, fromTracker: false);
             var metadataCompleted = new TaskCompletionSource<ReadOnlyMemory<byte>> ();
             using var registration = token.Register (() => metadataCompleted.TrySetResult (null));
             manager.MetadataReceived += (o, e) => metadataCompleted.TrySetResult (e);
@@ -976,7 +995,7 @@ namespace MonoTorrent.Client
                         DhtListener.Start ();
 
                     if (oldSettings.DhtEndPoint == null) {
-                        var dht = Factories.CreateDht ();
+                        var dht = Factories.CreateDht (Settings.DhtCapabilities, Settings.DispatchDhtEventsOnMainLoop);
                         await dht.SetListenerAsync (DhtListener);
                         await RegisterDht (dht);
 

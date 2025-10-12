@@ -1,4 +1,4 @@
-//
+﻿//
 // DhtEngine.cs
 //
 // Authors:
@@ -13,10 +13,10 @@
 // distribute, sublicense, and/or sell copies of the Software, and to
 // permit persons to whom the Software is furnished to do so, subject to
 // the following conditions:
-//
+// 
 // The above copyright notice and this permission notice shall be
 // included in all copies or substantial portions of the Software.
-//
+// 
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -25,6 +25,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
+
 
 using System;
 using System.Collections.Generic;
@@ -43,7 +44,7 @@ using MonoTorrent.Dht.Tasks;
 
 namespace MonoTorrent.Dht
 {
-    internal enum ErrorCode
+    enum ErrorCode
     {
         GenericError = 201,
         ServerError = 202,
@@ -51,7 +52,7 @@ namespace MonoTorrent.Dht
         MethodUnknown = 204//Method Unknown
     }
 
-    internal class TransferMonitor : ITransferMonitor
+    class TransferMonitor : ITransferMonitor
     {
         long ITransferMonitor.UploadRate => SendMonitor.Rate;
         long ITransferMonitor.DownloadRate => ReceiveMonitor.Rate;
@@ -62,80 +63,6 @@ namespace MonoTorrent.Dht
         internal SpeedMonitor ReceiveMonitor { get; } = new SpeedMonitor ();
     }
 
-    internal sealed class ReputationTracker
-    {
-        // MainLoop-confined; no extra locking needed if only touched on MainLoop.
-        readonly Dictionary<(System.Net.IPEndPoint ep, NodeId id), Stats> _map
-            = new Dictionary<(System.Net.IPEndPoint, NodeId), Stats> ();
-
-        // Tunables (lightweight defaults)
-        const double SampleWeight = 1.0;
-        const double ErrorWeight = 2.0;
-        static readonly TimeSpan HalfLife = TimeSpan.FromHours (6); // decay signal over time
-
-        struct Stats
-        {
-            public double Score;
-            public DateTime LastUpdateUtc;
-            public int TotalSamples;
-            public int TotalErrors;
-        }
-
-        static double DecayFactor (DateTime last)
-        {
-            var dt = DateTime.UtcNow - last;
-            if (dt <= TimeSpan.Zero)
-                return 1.0;
-            // Exponential decay: factor = 0.5^(dt / HalfLife)
-            return Math.Pow (0.5, dt.TotalSeconds / HalfLife.TotalSeconds);
-        }
-
-        (System.Net.IPEndPoint, NodeId) Key (Node n) => (n.EndPoint, n.Id);
-
-        public void RecordYield (Node node, int newKeys, int total)
-        {
-            var k = Key (node);
-            if (!_map.TryGetValue (k, out var s))
-                s = new Stats { LastUpdateUtc = DateTime.UtcNow };
-            else
-                s.Score *= DecayFactor (s.LastUpdateUtc);
-
-            // Tunables: favour novelty, give small weight to volume
-            const double NewWeight = 1.0;
-            const double VolumeWeight = 0.1; // duplicates/overlap still count a bit
-
-            s.Score += (newKeys * NewWeight) + ((total - newKeys) * VolumeWeight);
-            s.TotalSamples += total;
-            s.LastUpdateUtc = DateTime.UtcNow;
-            _map[k] = s;
-        }
-
-        public void RecordError (Node node, ErrorCode code)
-        {
-            var k = Key (node);
-            if (!_map.TryGetValue (k, out var s)) {
-                s = new Stats { LastUpdateUtc = DateTime.UtcNow };
-            } else {
-                s.Score *= DecayFactor (s.LastUpdateUtc);
-            }
-            // Penalise most errors the same; you can special-case if needed
-            s.Score -= ErrorWeight;
-            s.TotalErrors += 1;
-            s.LastUpdateUtc = DateTime.UtcNow;
-            _map[k] = s;
-        }
-
-        public double GetScore (Node node)
-        {
-            var k = Key (node);
-            if (_map.TryGetValue (k, out var s)) {
-                return s.Score * DecayFactor (s.LastUpdateUtc);
-            }
-            return 0.0; // unknown = neutral
-        }
-    }
-
-
     public class DhtEngine : IDisposable, IDhtEngine
     {
         internal static readonly IList<string> DefaultBootstrapRouters = Array.AsReadOnly (new[] {
@@ -144,20 +71,12 @@ namespace MonoTorrent.Dht
             "dht.transmissionbt.com"
         });
 
-        private static readonly TimeSpan DefaultAnnounceInternal = TimeSpan.FromMinutes (10);
-        private static readonly TimeSpan DefaultMinimumAnnounceInterval = TimeSpan.FromMinutes (3);
-
         private CancellationTokenSource? _samplingCts;
-        private bool _samplingInProgress;
+        private int _samplingFlag;
+        internal readonly HashSet<IPEndPoint> BootstrapNodes = new HashSet<IPEndPoint> ();
 
-        private readonly Dictionary<IPEndPoint, DateTime> _sentRecently = new Dictionary<IPEndPoint, DateTime> ();
-        private static readonly TimeSpan SentWindow = TimeSpan.FromMinutes (10);
-
-        private bool _sawUnsolicited;
-        private DateTime _readyObservedAt;
-
-        private static readonly TimeSpan ReachabilityWarmup = TimeSpan.FromMinutes (5);
-        private static readonly TimeSpan ReachabilityTick = TimeSpan.FromSeconds (30);
+        static readonly TimeSpan DefaultAnnounceInternal = TimeSpan.FromMinutes (10);
+        static readonly TimeSpan DefaultMinimumAnnounceInterval = TimeSpan.FromMinutes (3);
 
         #region Events
 
@@ -167,16 +86,14 @@ namespace MonoTorrent.Dht
 
         public event EventHandler? StateChanged;
 
-        #endregion Events
-
-        internal static MainLoop MainLoop { get; } = new MainLoop ("DhtLoop");
-
-        internal ReputationTracker Reputation { get; } = new ReputationTracker ();
-
         internal static Action<Action> EventDispatch { get; set; } =
             action => ThreadPool.UnsafeQueueUserWorkItem (_ => {
                 try { action (); } catch { /* TODO: log */ }
             }, null);
+
+        #endregion Events
+
+        internal static MainLoop MainLoop { get; } = new MainLoop ("DhtLoop");
 
         // IPV6 - create an IPV4 and an IPV6 dht engine
         public AddressFamily AddressFamily { get; private set; } = AddressFamily.InterNetwork;
@@ -189,38 +106,38 @@ namespace MonoTorrent.Dht
 
         public TimeSpan MinimumAnnounceInterval => DefaultMinimumAnnounceInterval;
 
-        public DhtState State { get; private set; }
-
         public DhtCapabilities Capabilities { get; private set; }
+
+        public DhtState State { get; private set; }
 
         public bool DispatchEventsOnMainLoop { get; private set; }
 
-        /// <summary>
-        /// True until we observe at least one unsolicited inbound DHT query. Updated purely from DHT signals.
-        /// </summary>
-        public bool IsFirewalled { get; private set; } = true;
+        public SamplingAlgorithm SamplingAlgorithm { get; set; }
 
         internal TimeSpan BucketRefreshTimeout { get; set; }
         internal NodeId LocalId => RoutingTable.LocalNodeId;
         internal MessageLoop MessageLoop { get; }
         public int NodeCount => RoutingTable.CountNodes ();
-        private IEnumerable<Node> PendingNodes { get; set; }
+        IEnumerable<Node> PendingNodes { get; set; }
         internal RoutingTable RoutingTable { get; }
         internal TokenManager TokenManager { get; }
+        internal ReputationTracker Reputation { get; }
+        internal ReachabilityMonitor Reachability { get; }
+        internal SamplingState Sampling { get; }
         internal Dictionary<NodeId, List<Node>> Torrents { get; }
-
-        public static DhtCapabilities DefaultCapabilities => DhtCapabilities.AcceptInboundQueries | DhtCapabilities.StoreAnnouncedPeers | DhtCapabilities.ServePeerValues;
 
         public DhtEngine (DhtCapabilities? dhtCapabilities = null, bool? dispatchEventsOnMainLoop = true)
         {
             var monitor = new TransferMonitor ();
             BucketRefreshTimeout = TimeSpan.FromMinutes (15);
-            Capabilities = dhtCapabilities ?? DefaultCapabilities;
-            DispatchEventsOnMainLoop = true;
+            Capabilities = dhtCapabilities ?? DhtCapabilities.Default;
             MessageLoop = new MessageLoop (this, monitor);
             Monitor = monitor;
             PendingNodes = Array.Empty<Node> ();
+            Reputation = new ReputationTracker ();
+            Reachability = new ReachabilityMonitor ();
             RoutingTable = new RoutingTable ();
+            Sampling = new SamplingState (RoutingTable.LocalNodeId, 600);
             State = DhtState.NotReady;
             TokenManager = new TokenManager ();
             Torrents = new Dictionary<NodeId, List<Node>> ();
@@ -269,7 +186,7 @@ namespace MonoTorrent.Dht
             }
         }
 
-        private void CheckDisposed ()
+        void CheckDisposed ()
         {
             if (Disposed)
                 throw new ObjectDisposedException (GetType ().Name);
@@ -287,10 +204,6 @@ namespace MonoTorrent.Dht
         {
             if (Disposed)
                 return;
-
-            var cts = System.Threading.Interlocked.Exchange (ref _samplingCts, null);
-            if (cts != null)
-                cts.Dispose ();
 
             // Ensure we don't break any threads actively running right now
             MainLoop.QueueWait (() => {
@@ -313,37 +226,48 @@ namespace MonoTorrent.Dht
             }
         }
 
-        public async void SampleInfohashes (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default)
+        public bool TryStartSampling (SamplingOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            CheckDisposed ();
+            if (Interlocked.CompareExchange (ref _samplingFlag, 1, 0) != 0)
+                return false;
+
+            _ = DoSample (options, cancellationToken);
+            return true;
+        }
+
+        public async void SampleInfohashes (SamplingOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.CompareExchange (ref _samplingFlag, 1, 0) != 0)
+                return;
+
+            await DoSample (options, cancellationToken);
+        }
+
+        private async Task DoSample (SamplingOptions? samplingOptions, CancellationToken cancellationToken)
         {
             CheckDisposed ();
 
-            if (_samplingInProgress)
-                return;
-
             try {
-                _samplingInProgress = true;
-
                 await MainLoop;
 
-                // cancel any previous run and create a fresh CTS for engine-driven cancel
-                if (_samplingCts != null)
-                    _samplingCts.Cancel ();
+                _samplingCts?.Cancel ();
+                _samplingCts?.Dispose ();
                 _samplingCts = new CancellationTokenSource ();
 
-                // link caller's token with engine token so either can cancel
                 using (var linked = CancellationTokenSource.CreateLinkedTokenSource (cancellationToken, _samplingCts.Token)) {
                     var opts = samplingOptions ?? new SamplingOptions ();
                     var task = new SampleInfoHashesTask (this, opts);
                     await task.ExecuteAsync (linked.Token);
                 }
             } catch {
-                // Ignore?
+                // ignore to match style
             } finally {
-                _samplingInProgress = false;
+                Interlocked.Exchange (ref _samplingFlag, 0);
             }
         }
 
-        private async void InitializeAsync (IEnumerable<Node> nodes, string[] bootstrapRouters)
+        async void InitializeAsync (IEnumerable<Node> nodes, string[] bootstrapRouters)
         {
             await MainLoop;
 
@@ -353,7 +277,7 @@ namespace MonoTorrent.Dht
                 RaiseStateChanged (DhtState.NotReady);
             } else {
                 RaiseStateChanged (DhtState.Ready);
-                StartReachabilityProbe ();
+                Reachability.Start ();
             }
         }
 
@@ -467,7 +391,7 @@ namespace MonoTorrent.Dht
         public Task StartAsync (ReadOnlyMemory<byte> initialNodes, params string[] bootstrapRouters)
             => StartAsync (Node.FromCompactNode (BEncodedString.FromMemory (initialNodes)).Concat (PendingNodes), bootstrapRouters);
 
-        private async Task StartAsync (IEnumerable<Node> nodes, string[] bootstrapRouters)
+        async Task StartAsync (IEnumerable<Node> nodes, string[] bootstrapRouters)
         {
             CheckDisposed ();
 
@@ -478,7 +402,6 @@ namespace MonoTorrent.Dht
                 InitializeAsync (nodes, bootstrapRouters);
             } else {
                 RaiseStateChanged (DhtState.Ready);
-                StartReachabilityProbe ();
             }
 
             MainLoop.QueueTimeout (TimeSpan.FromSeconds (30), delegate {
@@ -493,6 +416,13 @@ namespace MonoTorrent.Dht
         {
             await MainLoop;
 
+            TryCancelSampling ();
+            MessageLoop.Stop ();
+            RaiseStateChanged (DhtState.NotReady);
+        }
+
+        private void TryCancelSampling ()
+        {
             var cts = System.Threading.Interlocked.Exchange (ref _samplingCts, null);
             if (cts != null) {
                 try {
@@ -503,9 +433,6 @@ namespace MonoTorrent.Dht
                     cts.Dispose ();
                 }
             }
-
-            MessageLoop.Stop ();
-            RaiseStateChanged (DhtState.NotReady);
         }
 
         internal async Task WaitForState (DhtState state)
@@ -534,73 +461,10 @@ namespace MonoTorrent.Dht
             await MessageLoop.SetListener (listener);
         }
 
-        internal void MarkSent (IPEndPoint ep)
-        {
-            var now = DateTime.UtcNow;
-            _sentRecently[ep] = now;
+        internal void MarkSent (System.Net.IPEndPoint endpoint) => Reachability.MarkSent (endpoint);
 
-            if (_sentRecently.Count % 256 == 0) {
-                var cutoff = now - SentWindow;
-                foreach (var kv in _sentRecently.Where (kv => kv.Value < cutoff).ToList ())
-                    _sentRecently.Remove (kv.Key);
-            }
-        }
+        internal void OnInboundQueryObserved (System.Net.IPEndPoint endpoint) => Reachability.ObserveInboundQuery (endpoint);
 
-        /// <summary>
-        /// Call this from MessageLoop when an inbound DHT query is decoded (y=="q").
-        /// Marks us as not firewalled if the endpoint is unsolicited.
-        /// </summary>
-        internal void OnInboundQueryObserved (IPEndPoint remote)
-        {
-            var now = DateTime.UtcNow;
-            DateTime last;
-            bool unsolicited = !_sentRecently.TryGetValue (remote, out last) || (now - last) > SentWindow;
-
-            if (unsolicited && !_sawUnsolicited) {
-                _sawUnsolicited = true;
-                SetFirewalled (false);
-            }
-        }
-
-        void StartReachabilityProbe ()
-        {
-            _readyObservedAt = DateTime.UtcNow;
-            _sawUnsolicited = false;
-
-            // conservative default until we prove otherwise
-            SetFirewalled (true);
-
-            MainLoop.QueueTimeout (ReachabilityTick, () => {
-                EvaluateReachability ();
-                return !Disposed;
-            });
-        }
-
-        void EvaluateReachability ()
-        {
-            if (Disposed)
-                return;
-
-            if (_sawUnsolicited) {
-                SetFirewalled (false);
-                return;
-            }
-
-            if (_sentRecently.Count == 0)
-                return;
-
-            if (DateTime.UtcNow - _readyObservedAt >= ReachabilityWarmup) {
-                SetFirewalled (true);
-            }
-        }
-
-        void SetFirewalled (bool value)
-        {
-            if (IsFirewalled == value)
-                return;
-            IsFirewalled = value;
-            // Intentionally no event reuse; add a dedicated ReachabilityChanged event later if needed.
-        }
-
+        public bool IsFirewalled => Reachability.IsFirewalled;
     }
 }

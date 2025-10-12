@@ -104,8 +104,11 @@ namespace MonoTorrent.Dht.Tasks
 
                 try {
                     var addresses = await completed;
-                    foreach (var v in addresses)
-                        results.Add (new Node (NodeId.Create (), new IPEndPoint (v, 6881)));
+                    foreach (var v in addresses) {
+                        var endpoint = new IPEndPoint (v, 6881);
+                        results.Add (new Node (NodeId.Create (), endpoint));
+                        engine.BootstrapNodes.Add (endpoint);
+                    }
                 } catch {
 
                 }
