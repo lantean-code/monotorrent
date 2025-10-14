@@ -5,7 +5,7 @@ using System.Net;
 
 namespace MonoTorrent.Dht
 {
-    internal sealed class ReachabilityMonitor
+    sealed class ReachabilityMonitor
     {
         readonly HashSet<IPEndPoint> _bootstrap = new HashSet<IPEndPoint> ();
         readonly Dictionary<IPEndPoint, DateTime> _sent = new Dictionary<IPEndPoint, DateTime> ();

@@ -76,7 +76,8 @@ namespace MonoTorrent.Dht
         void Add (IEnumerable<ReadOnlyMemory<byte>> nodes);
         void Announce (InfoHash infoHash, int port);
         void GetPeers (InfoHash infoHash);
-        void SampleInfohashes (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default);
+        bool SampleInfohashes (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default);
+        Task<bool> SampleInfohashesAsync (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default);
         Task<ReadOnlyMemory<byte>> SaveNodesAsync ();
         Task SetListenerAsync (IDhtListener listener);
         Task StartAsync ();

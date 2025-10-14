@@ -69,9 +69,14 @@ namespace MonoTorrent.Client
         {
 
         }
-        public void SampleInfohashes (SamplingOptions samplingOptions = null, CancellationToken cancellationToken = default)
+        public bool SampleInfohashes (SamplingOptions samplingOptions = null, CancellationToken cancellationToken = default)
         {
-            
+            return false;
+        }
+
+        public Task<bool> SampleInfohashesAsync (SamplingOptions? samplingOptions = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult (false);
         }
 
         public void RaisePeersFound (InfoHash infoHash, IList<PeerInfo> peers)

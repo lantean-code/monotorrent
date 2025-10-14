@@ -6,18 +6,19 @@ using System.Threading.Tasks;
 
 namespace MonoTorrent.Dht
 {
-    internal sealed class ReputationTracker
+    sealed class ReputationTracker
     {
         // MainLoop-confined; no extra locking needed if only touched on MainLoop.
-        readonly Dictionary<(System.Net.IPEndPoint ep, NodeId id), Stats> _map
+        private readonly Dictionary<(System.Net.IPEndPoint ep, NodeId id), Stats> _map
             = new Dictionary<(System.Net.IPEndPoint, NodeId), Stats> ();
 
         // Tunables (lightweight defaults)
-        const double SampleWeight = 1.0;
-        const double ErrorWeight = 2.0;
-        static readonly TimeSpan HalfLife = TimeSpan.FromHours (6); // decay signal over time
+        private const double SampleWeight = 1.0;
 
-        struct Stats
+        private const double ErrorWeight = 2.0;
+        private static readonly TimeSpan HalfLife = TimeSpan.FromHours (6); // decay signal over time
+
+        private struct Stats
         {
             public double Score;
             public DateTime LastUpdateUtc;
@@ -25,7 +26,7 @@ namespace MonoTorrent.Dht
             public int TotalErrors;
         }
 
-        static double DecayFactor (DateTime last)
+        private static double DecayFactor (DateTime last)
         {
             var dt = DateTime.UtcNow - last;
             if (dt <= TimeSpan.Zero)
@@ -34,7 +35,7 @@ namespace MonoTorrent.Dht
             return Math.Pow (0.5, dt.TotalSeconds / HalfLife.TotalSeconds);
         }
 
-        (System.Net.IPEndPoint, NodeId) Key (Node n) => (n.EndPoint, n.Id);
+        private (System.Net.IPEndPoint, NodeId) Key (Node n) => (n.EndPoint, n.Id);
 
         public void RecordYield (Node node, int newKeys, int total)
         {
@@ -57,11 +58,11 @@ namespace MonoTorrent.Dht
         public void RecordError (Node node, ErrorCode code)
         {
             var k = Key (node);
-            if (!_map.TryGetValue (k, out var s)) {
+            if (!_map.TryGetValue (k, out var s))
                 s = new Stats { LastUpdateUtc = DateTime.UtcNow };
-            } else {
+            else
                 s.Score *= DecayFactor (s.LastUpdateUtc);
-            }
+
             // Penalise most errors the same; you can special-case if needed
             s.Score -= ErrorWeight;
             s.TotalErrors += 1;
@@ -72,9 +73,9 @@ namespace MonoTorrent.Dht
         public double GetScore (Node node)
         {
             var k = Key (node);
-            if (_map.TryGetValue (k, out var s)) {
+            if (_map.TryGetValue (k, out var s))
                 return s.Score * DecayFactor (s.LastUpdateUtc);
-            }
+            
             return 0.0; // unknown = neutral
         }
     }

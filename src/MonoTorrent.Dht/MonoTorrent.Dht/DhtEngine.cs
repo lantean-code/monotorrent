@@ -226,7 +226,7 @@ namespace MonoTorrent.Dht
             }
         }
 
-        public bool TryStartSampling (SamplingOptions? options = null, CancellationToken cancellationToken = default)
+        public bool SampleInfohashes (SamplingOptions? options = null, CancellationToken cancellationToken = default)
         {
             CheckDisposed ();
             if (Interlocked.CompareExchange (ref _samplingFlag, 1, 0) != 0)
@@ -236,12 +236,13 @@ namespace MonoTorrent.Dht
             return true;
         }
 
-        public async void SampleInfohashes (SamplingOptions? options = null, CancellationToken cancellationToken = default)
+        public async Task<bool> SampleInfohashesAsync (SamplingOptions? options = null, CancellationToken cancellationToken = default)
         {
             if (Interlocked.CompareExchange (ref _samplingFlag, 1, 0) != 0)
-                return;
+                return false;
 
             await DoSample (options, cancellationToken);
+            return true;
         }
 
         private async Task DoSample (SamplingOptions? samplingOptions, CancellationToken cancellationToken)
