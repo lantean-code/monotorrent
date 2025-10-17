@@ -50,6 +50,16 @@ namespace MonoTorrent.Client
         public bool IsIncoming { get; }
         public Uri Uri { get; } = new Uri ("test://1234.com:3434");
 
+        public ReusableTask CloseAsync ()
+        {
+            throw new NotImplementedException ();
+        }
+
+        public ReusableTask CloseWriteAsync ()
+        {
+            throw new NotImplementedException ();
+        }
+
         public ReusableTask ConnectAsync ()
         {
             throw new NotImplementedException ();
@@ -244,7 +254,21 @@ namespace MonoTorrent.Client
                 return;
 
             Disposed = true;
-            Connection.SafeDispose ();
+            // Attempt a best-effort graceful close in the background for any transport, then
+            // always dispose the underlying connection. We do this here to avoid making
+            // CleanupSocket async (it has many call sites and runs on the engine MainLoop).
+            // CloseAsync should be non-blocking (or bounded); performing it on a background
+            // task ensures we never stall the MainLoop while still giving uTP/TCP a chance to
+            // complete a graceful FIN before the final Dispose.
+            _ = System.Threading.Tasks.Task.Run (async () => {
+                try {
+                    try {
+                        await Connection.CloseAsync ().AsTask ().ConfigureAwait (false);
+                    } catch { }
+                } finally {
+                    Connection.SafeDispose ();
+                }
+            });
             MessageQueue.Dispose ();
         }
 

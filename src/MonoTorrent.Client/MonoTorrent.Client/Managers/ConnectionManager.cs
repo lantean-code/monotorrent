@@ -172,33 +172,63 @@ namespace MonoTorrent.Client
                     return ConnectionFailureReason.Unknown;
 
                 // Create a new IPeerConnection object for each connection attempt.
-                var connection = Factories.CreatePeerConnection (peer.Info.ConnectionUri);
-                if (connection == null)
-                    return ConnectionFailureReason.UnknownUriSchema;
-
-                var state = new AsyncConnectState (manager, connection, ValueStopwatch.StartNew ());
-                try {
-                    PendingConnects.Add (state);
-
-                    // A return value of 'null' means connection succeeded
-                    latestResult = await DoConnectToPeer (manager, peer, connection, allowedEncryption);
-                    if (latestResult == null)
-                        return null;
-                } catch {
-                    latestResult = ConnectionFailureReason.Unknown;
-                } finally {
-                    PendingConnects.Remove (state);
+                // If uTP is enabled, attempt uTP and TCP in the preferred order.
+                var originalUri = peer.Info.ConnectionUri;
+                var attempts = new System.Collections.Generic.List<Uri> (2);
+                if (Settings.EnableUtp) {
+                    var utpScheme = originalUri.Scheme == "ipv6" ? "utp6" : "utp4";
+                    var host = originalUri.Host;
+                    if (originalUri.HostNameType == UriHostNameType.IPv6 && host[0] != '[')
+                        host = $"[{host}]";
+                    var utpUri = new Uri ($"{utpScheme}://{host}:{originalUri.Port}");
+                    if (Settings.PreferUtp) {
+                        attempts.Add (utpUri);
+                        attempts.Add (originalUri);
+                    } else {
+                        attempts.Add (originalUri);
+                        attempts.Add (utpUri);
+                    }
+                } else {
+                    attempts.Add (originalUri);
                 }
 
-                // If the connection did not succeed, dispose the object and try again with a different encryption tier.
-                connection.SafeDispose ();
+                bool createdAnyAttempt = false;
+                foreach (var attemptUri in attempts) {
+                    var connection = Factories.CreatePeerConnection (attemptUri);
+                    if (connection == null)
+                        continue;
+                    createdAnyAttempt = true;
 
-                // If the error is *not* a retryable error, then bail out and return the failure.
-                // Otherwise loop and try again. A failure to send/receive a handshake is considered to be
-                // an encryption negiotiation failure as for outgoing connections the local client may send a
-                // plaintext handshake and the remote client may discard it as it only accepts encrypted ones.
-                if (latestResult != ConnectionFailureReason.EncryptionNegiotiationFailed)
-                    return latestResult;
+                    var state = new AsyncConnectState (manager, connection, ValueStopwatch.StartNew ());
+                    try {
+                        PendingConnects.Add (state);
+
+                        // A return value of 'null' means connection succeeded
+                        latestResult = await DoConnectToPeer (manager, peer, connection, allowedEncryption);
+                        if (latestResult == null)
+                            return null;
+                    } catch {
+                        latestResult = ConnectionFailureReason.Unknown;
+                    } finally {
+                        PendingConnects.Remove (state);
+                    }
+
+                    // If the connection did not succeed, attempt a best-effort graceful close then dispose.
+                    try { await connection.CloseAsync (); } catch { }
+                    connection.SafeDispose ();
+
+                    // If the error is *not* a retryable error, then bail out and return the failure.
+                    // Otherwise continue attempts. A failure to send/receive a handshake is considered to be
+                    // an encryption negotiation failure as for outgoing connections the local client may send a
+                    // plaintext handshake and the remote client may discard it as it only accepts encrypted ones.
+                    if (latestResult != ConnectionFailureReason.EncryptionNegiotiationFailed)
+                        return latestResult;
+                }
+
+                // If none of the attempts resulted in a connection object, preserve previous behaviour
+                // and indicate the URI schema was unknown.
+                if (!createdAnyAttempt)
+                    return ConnectionFailureReason.UnknownUriSchema;
             }
 
             // if we got non-null failure reasons, return the most recent one here.

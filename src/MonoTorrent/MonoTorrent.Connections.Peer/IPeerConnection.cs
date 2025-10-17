@@ -57,5 +57,19 @@ namespace MonoTorrent.Connections.Peer
         ReusableTask<int> SendAsync (Memory<byte> buffer);
 
         Uri Uri { get; }
+
+        /// <summary>
+        /// Gracefully half-closes the connection for sending. For TCP this calls Shutdown(Send).
+        /// For uTP this initiates a FIN handshake. The connection may still receive data until
+        /// the remote closes.
+        /// </summary>
+        ReusableTask CloseWriteAsync ();
+
+        /// <summary>
+        /// Attempts a graceful full close of the connection. Implementations may perform a
+        /// best-effort FIN handshake or an equivalent. This method should not throw if the
+        /// underlying transport does not support graceful close.
+        /// </summary>
+        ReusableTask CloseAsync ();
     }
 }

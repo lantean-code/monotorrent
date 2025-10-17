@@ -191,6 +191,18 @@ namespace MonoTorrent.Client
             set => httpStreamingPrefix = CheckHttpStreamingPrefix (value);
         }
 
+        /// <summary>
+        /// If set to <see langword="true"/> then uTP (BEP29) will be enabled. Incoming and outgoing peer
+        /// connections may use uTP when available. Defaults to <see langword="false"/>.
+        /// </summary>
+        public bool EnableUtp { get; set; }
+
+        /// <summary>
+        /// When <see cref="EnableUtp"/> is <see langword="true"/>, controls whether uTP should be preferred over TCP
+        /// for outgoing peer connections. Defaults to <see langword="true"/>.
+        /// </summary>
+        public bool PreferUtp { get; set; }
+
         static string CheckHttpStreamingPrefix (string value)
         {
             if (value is null)
@@ -349,6 +361,8 @@ namespace MonoTorrent.Client
             FastResumeMode = settings.FastResumeMode;
             FileCreationMode = settings.FileCreationOptions;
             httpStreamingPrefix = settings.HttpStreamingPrefix;
+            EnableUtp = settings.EnableUtp;
+            PreferUtp = settings.PreferUtp;
             ListenEndPoints = new Dictionary<string, IPEndPoint> (settings.ListenEndPoints);
             ReportedListenEndPoints = new Dictionary<string, IPEndPoint> (settings.ReportedListenEndPoints);
             MaximumConnections = settings.MaximumConnections;
@@ -396,6 +410,8 @@ namespace MonoTorrent.Client
                 fastResumeMode: FastResumeMode,
                 fileCreationMode: FileCreationMode,
                 httpStreamingPrefix: HttpStreamingPrefix,
+                enableUtp: EnableUtp,
+                preferUtp: PreferUtp,
                 listenEndPoints: ListenEndPoints,
                 maximumConnections: MaximumConnections,
                 maximumDiskReadRate: MaximumDiskReadRate,

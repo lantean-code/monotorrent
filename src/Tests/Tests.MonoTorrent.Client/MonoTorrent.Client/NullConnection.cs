@@ -76,5 +76,15 @@ namespace MonoTorrent.Client
         {
             return ReusableTask.FromResult (0);
         }
+
+        public ReusableTask CloseWriteAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
+
+        public ReusableTask CloseAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
     }
 }

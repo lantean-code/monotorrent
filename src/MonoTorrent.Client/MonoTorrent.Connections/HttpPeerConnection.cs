@@ -327,6 +327,16 @@ namespace MonoTorrent.Connections.Peer
             return socketBuffer.Length;
         }
 
+        public ReusableTask CloseWriteAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
+
+        public ReusableTask CloseAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
+
         static List<BlockInfo> DecodeMessages (ReadOnlySpan<byte> buffer)
         {
             var messages = new List<BlockInfo> ();

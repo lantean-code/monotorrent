@@ -57,6 +57,8 @@ namespace MonoTorrent
         public delegate ILocalPeerDiscovery LocalPeerDiscoveryCreator ();
         public delegate IPeerConnection PeerConnectionCreator (Uri uri);
         public delegate IPeerConnectionListener PeerConnectionListenerCreator (IPEndPoint endPoint);
+        public delegate IPeerConnectionListener UtpPeerConnectionListenerCreator (IPEndPoint endPoint);
+        public delegate IPeerConnectionListener CombinedPeerConnectionListenerCreator (IPEndPoint endPoint);
         public delegate IPieceRequester PieceRequesterCreator (PieceRequesterSettings settings);
         public delegate IPieceWriter PieceWriterCreator (int maxOpenFiles);
         public delegate IPortForwarder PortForwarderCreator ();
@@ -76,6 +78,8 @@ namespace MonoTorrent
         HttpClientCreator HttpClientFunc { get; set; }
         ReadOnlyDictionary<string, PeerConnectionCreator> PeerConnectionFuncs { get; set; }
         PeerConnectionListenerCreator PeerConnectionListenerFunc { get; set; }
+        UtpPeerConnectionListenerCreator UtpPeerConnectionListenerFunc { get; set; }
+        CombinedPeerConnectionListenerCreator CombinedPeerConnectionListenerFunc { get; set; }
         PieceRequesterCreator PieceRequesterFunc { get; set; }
         PieceWriterCreator PieceWriterFunc { get; set; }
         PortForwarderCreator PortForwarderFunc { get; set; }
@@ -97,9 +101,13 @@ namespace MonoTorrent
                 new Dictionary<string, PeerConnectionCreator> {
                     { "ipv4", uri => new SocketPeerConnection (uri, new SocketConnector ()) },
                     { "ipv6", uri => new SocketPeerConnection (uri, new SocketConnector ()) },
+                    { "utp4", uri => new UtpPeerConnection (uri) },
+                    { "utp6", uri => new UtpPeerConnection (uri) },
                 }
             );
             PeerConnectionListenerFunc = endPoint => new PeerConnectionListener (endPoint);
+            UtpPeerConnectionListenerFunc = endPoint => new UtpPeerConnectionListener (endPoint);
+            CombinedPeerConnectionListenerFunc = endPoint => new CombinedPeerConnectionListener (endPoint);
             PieceRequesterFunc = settings => new StandardPieceRequester (settings);
             PieceWriterFunc = maxOpenFiles => new DiskWriter (maxOpenFiles);
             PortForwarderFunc = () => new MonoNatPortForwarder ();
@@ -196,6 +204,24 @@ namespace MonoTorrent
         {
             var dupe = MemberwiseClone ();
             dupe.PeerConnectionListenerFunc = creator ?? Default.PeerConnectionListenerFunc;
+            return dupe;
+        }
+
+        public IPeerConnectionListener CreateUtpPeerConnectionListener (IPEndPoint endPoint)
+            => UtpPeerConnectionListenerFunc (endPoint);
+        public Factories WithUtpPeerConnectionListenerCreator (UtpPeerConnectionListenerCreator creator)
+        {
+            var dupe = MemberwiseClone ();
+            dupe.UtpPeerConnectionListenerFunc = creator ?? Default.UtpPeerConnectionListenerFunc;
+            return dupe;
+        }
+
+        public IPeerConnectionListener CreateCombinedPeerConnectionListener (IPEndPoint endPoint)
+            => CombinedPeerConnectionListenerFunc (endPoint);
+        public Factories WithCombinedPeerConnectionListenerCreator (CombinedPeerConnectionListenerCreator creator)
+        {
+            var dupe = MemberwiseClone ();
+            dupe.CombinedPeerConnectionListenerFunc = creator ?? Default.CombinedPeerConnectionListenerFunc;
             return dupe;
         }
 

@@ -42,6 +42,7 @@ using System.Threading.Tasks;
 using MonoTorrent.BEncoding;
 using MonoTorrent.Client.Listeners;
 using MonoTorrent.Client.RateLimiters;
+using MonoTorrent.Connections;
 using MonoTorrent.Connections.Dht;
 using MonoTorrent.Connections.Peer;
 using MonoTorrent.Dht;
@@ -332,7 +333,10 @@ namespace MonoTorrent.Client
                 uploadLimiter
             };
 
-            PeerListeners = Array.AsReadOnly (settings.ListenEndPoints.Values.Select (t => Factories.CreatePeerConnectionListener (t)).ToArray ());
+            if (settings.EnableUtp)
+                PeerListeners = Array.AsReadOnly (settings.ListenEndPoints.Values.Select (t => Factories.CreateCombinedPeerConnectionListener (t)).ToArray ());
+            else
+                PeerListeners = Array.AsReadOnly (settings.ListenEndPoints.Values.Select (t => Factories.CreatePeerConnectionListener (t)).ToArray ());
             listenManager.SetListeners (PeerListeners);
 
             DhtListener = (settings.DhtEndPoint == null ? null : Factories.CreateDhtListener (settings.DhtEndPoint)) ?? new NullDhtListener ();
@@ -859,22 +863,57 @@ namespace MonoTorrent.Client
                 v.Start ();
 
             // The settings could say to listen at port 0, which means 'choose one dynamically'
-            var maps = PeerListeners
+            var localEndpoints = PeerListeners
                 .Select (t => t.LocalEndPoint!)
                 .Where (t => t != null)
+                .ToArray ();
+
+            var tcpMaps = localEndpoints
                 .Select (endpoint => PortForwarder.RegisterMappingAsync (new Mapping (Protocol.Tcp, endpoint.Port)))
                 .ToArray ();
-            await Task.WhenAll (maps);
+            await Task.WhenAll (tcpMaps);
+
+            if (Settings.EnableUtp) {
+                // Some listeners (e.g. CombinedPeerConnectionListener, or any custom implementation) may expose a
+                // distinct UDP endpoint for uTP traffic. Use the capability interface to avoid depending on concrete types.
+                var udpEndpoints = PeerListeners
+                    .OfType<IUtpSocketListener> ()
+                    .Select (l => l.UtpLocalEndPoint)
+                    .Where (ep => ep != null)
+                    .Select (ep => ep!)
+                    .ToArray ();
+                var udpMaps = udpEndpoints
+                    .Select (endpoint => PortForwarder.RegisterMappingAsync (new Mapping (Protocol.Udp, endpoint.Port)))
+                    .ToArray ();
+                await Task.WhenAll (udpMaps);
+            }
         }
 
         async ReusableTask UnmapAndStopPeerListeners()
         {
-            var unmaps = PeerListeners
-                    .Select (t => t.LocalEndPoint!)
-                    .Where (t => t != null)
-                    .Select (endpoint => PortForwarder.UnregisterMappingAsync (new Mapping (Protocol.Tcp, endpoint.Port), CancellationToken.None))
+            var localEndpoints = PeerListeners
+                .Select (t => t.LocalEndPoint!)
+                .Where (t => t != null)
+                .ToArray ();
+
+            var tcpUnmaps = localEndpoints
+                .Select (endpoint => PortForwarder.UnregisterMappingAsync (new Mapping (Protocol.Tcp, endpoint.Port), CancellationToken.None))
+                .ToArray ();
+            await Task.WhenAll (tcpUnmaps);
+
+            if (Settings.EnableUtp) {
+                // See comment above: retrieve UDP endpoints via capability interface to remain decoupled from concrete listeners.
+                var udpEndpoints = PeerListeners
+                    .OfType<IUtpSocketListener> ()
+                    .Select (l => l.UtpLocalEndPoint)
+                    .Where (ep => ep != null)
+                    .Select (ep => ep!)
                     .ToArray ();
-            await Task.WhenAll (unmaps);
+                var udpUnmaps = udpEndpoints
+                    .Select (endpoint => PortForwarder.UnregisterMappingAsync (new Mapping (Protocol.Udp, endpoint.Port), CancellationToken.None))
+                    .ToArray ();
+                await Task.WhenAll (udpUnmaps);
+            }
 
             foreach (var listener in PeerListeners)
                 listener.Stop ();
@@ -992,7 +1031,10 @@ namespace MonoTorrent.Client
             if (!oldSettings.ListenEndPoints.SequenceEqual (newSettings.ListenEndPoints)) {
                 await UnmapAndStopPeerListeners ();
 
-                PeerListeners = Array.AsReadOnly (newSettings.ListenEndPoints.Values.Select (t => Factories.CreatePeerConnectionListener (t)).ToArray ());
+                if (newSettings.EnableUtp)
+                    PeerListeners = Array.AsReadOnly (newSettings.ListenEndPoints.Values.Select (t => Factories.CreateCombinedPeerConnectionListener (t)).ToArray ());
+                else
+                    PeerListeners = Array.AsReadOnly (newSettings.ListenEndPoints.Values.Select (t => Factories.CreatePeerConnectionListener (t)).ToArray ());
                 listenManager.SetListeners (PeerListeners);
 
                 if (IsRunning)

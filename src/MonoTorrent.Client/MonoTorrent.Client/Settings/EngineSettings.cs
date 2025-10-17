@@ -181,6 +181,18 @@ namespace MonoTorrent.Client
         public string HttpStreamingPrefix { get; } = "http://127.0.0.1:5555/";
 
         /// <summary>
+        /// If set to <see langword="true"/> then uTP (BEP29) will be enabled. Incoming and outgoing peer
+        /// connections may use uTP when available. Defaults to <see langword="false"/>.
+        /// </summary>
+        public bool EnableUtp { get; } = false;
+
+        /// <summary>
+        /// When <see cref="EnableUtp"/> is <see langword="true"/>, this controls whether uTP should be preferred over TCP
+        /// for outgoing peer connections. Defaults to <see langword="true"/>.
+        /// </summary>
+        public bool PreferUtp { get; } = true;
+
+        /// <summary>
         /// The TCP port the engine should listen on for incoming connections. Set the port to 0 to use a random
         /// available port, set to null to disable incoming connections. Defaults to IPAddress.Any and IPAddress.AnyIPv6,
         /// both with port 0.
@@ -291,7 +303,7 @@ namespace MonoTorrent.Client
             int maximumConnections, int maximumDiskReadRate, int maximumDiskWriteRate, int maximumDownloadRate, int maximumHalfOpenConnections,
             int maximumOpenFiles, int maximumUploadRate, IDictionary<string, IPEndPoint> reportedListenEndPoints, bool usePartialFiles,
             TimeSpan webSeedConnectionTimeout, TimeSpan webSeedDelay, int webSeedSpeedTrigger, TimeSpan staleRequestTimeout,
-            string httpStreamingPrefix, IList<TimeSpan> connectionRetryDelays)
+            string httpStreamingPrefix, IList<TimeSpan> connectionRetryDelays, bool enableUtp = false, bool preferUtp = true)
         {
             // Make sure this is immutable now
             AllowedEncryption = EncryptionTypes.MakeReadOnly (allowedEncryption.ToArray ());
@@ -312,6 +324,8 @@ namespace MonoTorrent.Client
             FastResumeMode = fastResumeMode;
             FileCreationOptions = fileCreationMode;
             HttpStreamingPrefix = httpStreamingPrefix;
+            EnableUtp = enableUtp;
+            PreferUtp = preferUtp;
             ListenEndPoints = new ReadOnlyDictionary<string, IPEndPoint> (new Dictionary<string, IPEndPoint> (listenEndPoints));
             MaximumConnections = maximumConnections;
             MaximumDiskReadRate = maximumDiskReadRate;
@@ -401,6 +415,8 @@ namespace MonoTorrent.Client
                    && WebSeedConnectionTimeout == other.WebSeedConnectionTimeout
                    && WebSeedDelay == other.WebSeedDelay
                    && WebSeedSpeedTrigger == other.WebSeedSpeedTrigger
+                   && EnableUtp == other.EnableUtp
+                   && PreferUtp == other.PreferUtp
                    ;
         }
 

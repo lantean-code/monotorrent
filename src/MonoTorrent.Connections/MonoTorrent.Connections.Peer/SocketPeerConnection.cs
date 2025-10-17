@@ -195,6 +195,22 @@ namespace MonoTorrent.Connections.Peer
             return SendTcs.Task;
         }
 
+        public async ReusableTask CloseWriteAsync ()
+        {
+            try {
+                Socket?.Shutdown (SocketShutdown.Send);
+            } catch {
+            }
+        }
+
+        public async ReusableTask CloseAsync ()
+        {
+            try {
+                Socket?.Shutdown (SocketShutdown.Both);
+            } catch {
+            }
+        }
+
         public void Dispose ()
         {
             Disposed = true;

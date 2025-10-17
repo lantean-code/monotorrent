@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
+using MonoTorrent;
 using MonoTorrent.Client.Modes;
 using MonoTorrent.Connections;
 using MonoTorrent.Connections.Peer;
@@ -44,6 +46,125 @@ namespace MonoTorrent.Client
             Assert.AreEqual (torrents[1], manager.Torrents[0]);
             Assert.AreEqual (torrents[2], manager.Torrents[1]);
             Assert.AreEqual (torrents[0], manager.Torrents[2]);
+        }
+
+        [Test]
+        public async Task PreferUtp_AttemptsUtpFirst ()
+        {
+            var attempts = new List<Uri> ();
+            var utpConnection = new FakeConnection (new Uri ("utp4://127.0.0.1:1234"));
+            utpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+            var tcpConnection = new FakeConnection (new Uri ("ipv4://127.0.0.1:1234"));
+            tcpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+
+            var factories = EngineHelpers.Factories
+                .WithPeerConnectionCreator ("utp4", uri => { attempts.Add (uri); return utpConnection; })
+                .WithPeerConnectionCreator ("ipv4", uri => { attempts.Add (uri); return tcpConnection; });
+
+            var settings = new EngineSettingsBuilder (EngineHelpers.CreateSettings (listenEndPoints: new Dictionary<string, IPEndPoint> { { "ipv4", new IPEndPoint (IPAddress.Loopback, 0) } })) {
+                EnableUtp = true,
+                PreferUtp = true
+            }.ToSettings ();
+
+            var engine = EngineHelpers.Create (settings, factories);
+            try {
+                var manager = await engine.AddAsync (new MagnetLink (InfoHash.FromHex ("0102030405060708090a0b0c0d0e0f1011121314")), Path.Combine (Path.GetTempPath (), Guid.NewGuid ().ToString ("N")));
+                manager.Mode = new TestConnectionMode ();
+
+                var peer = new Peer (new PeerInfo (new Uri ("ipv4://127.0.0.1:1234")));
+                var method = typeof (ConnectionManager).GetMethod ("DoConnectToPeer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof (TorrentManager), typeof (Peer) }, null)!;
+
+                try {
+                    var task = (ReusableTask<ConnectionFailureReason?>) method.Invoke (engine.ConnectionManager, new object[] { manager, peer })!;
+                    await task.AsTask ();
+                } catch {
+                }
+
+                Assert.That (attempts, Is.Not.Empty, "#1");
+                Assert.AreEqual ("utp4", attempts[0].Scheme, "#2");
+            } finally {
+                engine.Dispose ();
+            }
+        }
+
+        [Test]
+        public async Task PreferTcp_WhenConfigured ()
+        {
+            var attempts = new List<Uri> ();
+            var utpConnection = new FakeConnection (new Uri ("utp4://127.0.0.1:1234"));
+            utpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+            var tcpConnection = new FakeConnection (new Uri ("ipv4://127.0.0.1:1234"));
+            tcpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+
+            var factories = EngineHelpers.Factories
+                .WithPeerConnectionCreator ("utp4", uri => { attempts.Add (uri); return utpConnection; })
+                .WithPeerConnectionCreator ("ipv4", uri => { attempts.Add (uri); return tcpConnection; });
+
+            var settings = new EngineSettingsBuilder (EngineHelpers.CreateSettings (listenEndPoints: new Dictionary<string, IPEndPoint> { { "ipv4", new IPEndPoint (IPAddress.Loopback, 0) } })) {
+                EnableUtp = true,
+                PreferUtp = false
+            }.ToSettings ();
+
+            var engine = EngineHelpers.Create (settings, factories);
+            try {
+                var manager = await engine.AddAsync (new MagnetLink (InfoHash.FromHex ("1112131415161718191a1b1c1d1e1f2021222324")), Path.Combine (Path.GetTempPath (), Guid.NewGuid ().ToString ("N")));
+                manager.Mode = new TestConnectionMode ();
+
+                var peer = new Peer (new PeerInfo (new Uri ("ipv4://127.0.0.1:1234")));
+                var method = typeof (ConnectionManager).GetMethod ("DoConnectToPeer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof (TorrentManager), typeof (Peer) }, null)!;
+
+                try {
+                    var task = (ReusableTask<ConnectionFailureReason?>) method.Invoke (engine.ConnectionManager, new object[] { manager, peer })!;
+                    await task.AsTask ();
+                } catch {
+                }
+
+                Assert.That (attempts, Is.Not.Empty, "#1");
+                Assert.AreEqual ("ipv4", attempts[0].Scheme, "#2");
+            } finally {
+                engine.Dispose ();
+            }
+        }
+
+        [Test]
+        public async Task PreferUtp_ConstructsIpv6Uris ()
+        {
+            var attempts = new List<Uri> ();
+            var utpConnection = new FakeConnection (new Uri ("utp6://[::1]:2345"));
+            utpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+            var tcpConnection = new FakeConnection (new Uri ("ipv6://[::1]:2345"));
+            tcpConnection.ConnectAsyncResultTask.SetException (new Exception ());
+
+            var factories = EngineHelpers.Factories
+                .WithPeerConnectionCreator ("utp6", uri => { attempts.Add (uri); return utpConnection; })
+                .WithPeerConnectionCreator ("ipv6", uri => { attempts.Add (uri); return tcpConnection; });
+
+            var settings = new EngineSettingsBuilder (EngineHelpers.CreateSettings (listenEndPoints: new Dictionary<string, IPEndPoint> { { "ipv6", new IPEndPoint (IPAddress.IPv6Loopback, 0) } })) {
+                EnableUtp = true,
+                PreferUtp = true
+            }.ToSettings ();
+
+            var engine = EngineHelpers.Create (settings, factories);
+            try {
+                var manager = await engine.AddAsync (new MagnetLink (InfoHash.FromHex ("2122232425262728292a2b2c2d2e2f3031323334")), Path.Combine (Path.GetTempPath (), Guid.NewGuid ().ToString ("N")));
+                manager.Mode = new TestConnectionMode ();
+
+                var peer = new Peer (new PeerInfo (new Uri ("ipv6://[::1]:2345")));
+                var method = typeof (ConnectionManager).GetMethod ("DoConnectToPeer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, new[] { typeof (TorrentManager), typeof (Peer) }, null)!;
+
+                try {
+                    var task = (ReusableTask<ConnectionFailureReason?>) method.Invoke (engine.ConnectionManager, new object[] { manager, peer })!;
+                    await task.AsTask ();
+                } catch {
+                }
+
+                Assert.That (attempts, Is.Not.Empty, "#1");
+                Assert.AreEqual ("utp6", attempts[0].Scheme, "#2");
+                Assert.AreEqual (UriHostNameType.IPv6, attempts[0].HostNameType, "#3");
+                StringAssert.StartsWith ("utp6://[", attempts[0].OriginalString, "#4");
+            } finally {
+                engine.Dispose ();
+            }
         }
 
         class FakeConnection : IPeerConnection
@@ -89,6 +210,52 @@ namespace MonoTorrent.Client
             {
                 SendAsyncInvokedTask.SetResult (buffer);
                 return await SendAsyncResultTask.Task;
+            }
+
+            public ReusableTask CloseWriteAsync ()
+            {
+                return ReusableTask.CompletedTask;
+            }
+
+            public ReusableTask CloseAsync ()
+            {
+                return ReusableTask.CompletedTask;
+            }
+        }
+
+        class TestConnectionMode : IMode
+        {
+            public bool CanAcceptConnections => true;
+            public bool CanHandleMessages => false;
+            public bool CanHashCheck => false;
+            public TorrentState State => TorrentState.Downloading;
+            public CancellationToken Token => CancellationToken.None;
+
+            public void Dispose ()
+            {
+            }
+
+            public void HandleFilePriorityChanged (ITorrentManagerFile file, Priority oldPriority)
+            {
+            }
+
+            public void HandleMessage (PeerId id, PeerMessage message, PeerMessage.Releaser releaser)
+            {
+            }
+
+            public void HandlePeerConnected (PeerId id)
+            {
+            }
+
+            public void HandlePeerDisconnected (PeerId id)
+            {
+            }
+
+            public bool ShouldConnect (Peer peer)
+                => true;
+
+            public void Tick (int counter)
+            {
             }
         }
 

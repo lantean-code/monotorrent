@@ -286,6 +286,16 @@ namespace MonoTorrent.Client
 
         public override string ToString ()
             => Name;
+
+        public ReusableTask CloseWriteAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
+
+        public ReusableTask CloseAsync ()
+        {
+            return ReusableTask.CompletedTask;
+        }
     }
 
     class CustomListener : IPeerConnectionListener
